@@ -1,31 +1,49 @@
-# 🌾 EndpointHarvester
+# EndpointHarvest 🕸️
 
-**EndpointHarvester** is a lightweight, security-focused URL and endpoint extraction tool built for **offensive security**, **penetration testing**, **bug bounty**, and **reconnaissance** workflows.
+**EndpointHarvest** is a lightweight, offensive-security–focused Python tool that extracts potential endpoints and URLs from files using carefully designed regular expressions.
 
-It statically analyzes files and harvests potentially interesting **URLs, endpoints, and paths** using carefully designed, bounded regular expressions.
+Unlike naive URL extractors, EndpointHarvest is built for **real-world pentesting and bug bounty workflows**:
+- ✔ Extracts endpoints from **comments and dead code**
+- ✔ Preserves **parameterized and partial URLs**
+- ✔ Handles **JavaScript string concatenation**
+- ✔ Filters out common **noise and garbage tokens**
+- ✔ Works reliably on **Python 3.9 – 3.14**
 
 ---
 
-## 🚀 Features
+## ✨ Features
 
-- Extracts high-signal attack surface:
+- Extracts:
   - Full URLs (`https://example.com/api`)
-  - Protocol-relative URLs (`//cdn.example.com/app.js`)
-  - Absolute paths (`/login`, `/api/v1/users`)
-  - Paths with parameters (`/search?q=test`)
-- Regex patterns optimized for real-world web & API targets
-- Deduplicated output
-- Handles large files safely (line-by-line processing)
-- CLI interface with `--help`
-- Output to stdout or file
-- Python standard library only (no external dependencies)
+  - Relative endpoints (`/api/v1/users`)
+  - Parameterized URLs (`/search?q=`, `/item?id=' + id`)
+  - URLs hidden inside `//` and `/* */` comments
+- Ignores:
+  - Regex flags (`/g`, `/gi`)
+  - HTML tags (`/div`, `/span`)
+  - JavaScript keywords (`/if`, `/var`)
+  - Low-value static assets (`.css`, `.png`, `.woff`, etc.)
+- Safe by default:
+  - No `eval`
+  - No shell execution
+  - Read-only file access
 
 ---
 
-## 📦 Installation
+## 📦 Requirements
 
-### Clone the Repository
+- Python **3.9 or newer**
+- No external dependencies
+
+> Standard library only — nothing to install via pip.
+
+---
+
+## 🚀 Installation
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/damodarnaik/endpointharvest.git
 cd endpointharvest
+python3 endpointharvest.py -i <input_file>
