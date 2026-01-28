@@ -27,5 +27,5 @@ It statically analyzes files and harvests potentially interesting **URLs, endpoi
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/endpointharvest.git
+git clone https://github.com/damodarnaik/endpointharvest.git
 cd endpointharvest
