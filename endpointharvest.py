@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-URL / Path Extraction Tool
-Author: Security-focused implementation
+EndpointHarvester
+A safe, regex-based endpoint and URL extraction tool
+for offensive security and reconnaissance.
 """
 
 import argparse
@@ -10,78 +11,80 @@ import sys
 from pathlib import Path
 from typing import Set
 
+
 # -----------------------------
-# SAFE & BOUNDED REGEX PATTERNS
+# REGEX DEFINITIONS (VERBOSE-SAFE)
 # -----------------------------
 
-# 1. Full URLs with protocol
+# Full URLs: https://example.com/path
 FULL_URL_REGEX = re.compile(
     r"""
     \b
     (?:https?|ftp)://
-    (?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}
+    (?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}
     (?::\d{1,5})?
     (?:/[^\s"'<>]*)?
     """,
     re.VERBOSE | re.IGNORECASE
 )
 
-# 2. Protocol-relative URLs (//example.com/path)
+# Protocol-relative URLs: //example.com/path
 PROTO_RELATIVE_REGEX = re.compile(
     r"""
     (?<!:)
     //
-    (?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}
+    (?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}
     (?::\d{1,5})?
     (?:/[^\s"'<>]*)?
     """,
     re.VERBOSE | re.IGNORECASE
 )
 
-# 3. Absolute paths with optional query & fragment
+# Absolute paths: /path, /path?x=1, /path#frag
 ABSOLUTE_PATH_REGEX = re.compile(
     r"""
-    (?<![\w-])
+    (?<!\w)
     /
-    [a-zA-Z0-9._~!$&'()*+,;=:@/%-]*
-    (?:\?[a-zA-Z0-9._~!$&'()*+,;=:@/%-]*)?
-    (?:#[a-zA-Z0-9._~!$&'()*+,;=:@/%-]*)?
+    [A-Za-z0-9._~!$&'()+,;=:@/%\-]*
+    (?:\?[A-Za-z0-9._~!$&'()+,;=:@/%\-]*)?
+    (?:\#[A-Za-z0-9._~!$&'()+,;=:@/%\-]*)?
     """,
     re.VERBOSE
 )
+
 
 # -----------------------------
 # CORE LOGIC
 # -----------------------------
 
-def extract_links(file_path: Path) -> Set[str]:
+def extract_endpoints(file_path: Path) -> Set[str]:
     results: Set[str] = set()
 
     try:
-        with file_path.open("r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
+        with file_path.open("r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
                 results.update(FULL_URL_REGEX.findall(line))
                 results.update(PROTO_RELATIVE_REGEX.findall(line))
                 results.update(ABSOLUTE_PATH_REGEX.findall(line))
-    except OSError as exc:
-        print(f"[!] File error: {exc}", file=sys.stderr)
+    except OSError as e:
+        print(f"[!] File error: {e}", file=sys.stderr)
         sys.exit(1)
 
     return results
 
 
 # -----------------------------
-# CLI INTERFACE
+# CLI
 # -----------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Safely extract potential URLs and paths from a file using regex",
+        description="EndpointHarvester - Extract URLs and endpoints from files",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
-  python3 url_extractor.py input.txt
-  python3 url_extractor.py input.txt -o results.txt
+  python endpointharvest.py app.js
+  python endpointharvest.py app.js -o endpoints.txt
 """
     )
 
@@ -94,7 +97,7 @@ Examples:
     parser.add_argument(
         "-o", "--output",
         type=Path,
-        help="Write results to a file instead of stdout"
+        help="Save output to a file instead of stdout"
     )
 
     args = parser.parse_args()
@@ -103,18 +106,18 @@ Examples:
         print("[!] Input file does not exist or is not a file", file=sys.stderr)
         sys.exit(1)
 
-    links = sorted(extract_links(args.file))
+    endpoints = sorted(extract_endpoints(args.file))
 
     if args.output:
         try:
-            args.output.write_text("\n".join(links) + "\n", encoding="utf-8")
-            print(f"[+] Extracted {len(links)} unique entries → {args.output}")
-        except OSError as exc:
-            print(f"[!] Failed to write output: {exc}", file=sys.stderr)
+            args.output.write_text("\n".join(endpoints) + "\n", encoding="utf-8")
+            print(f"[+] Extracted {len(endpoints)} endpoints → {args.output}")
+        except OSError as e:
+            print(f"[!] Output error: {e}", file=sys.stderr)
             sys.exit(1)
     else:
-        for link in links:
-            print(link)
+        for endpoint in endpoints:
+            print(endpoint)
 
 
 if __name__ == "__main__":
