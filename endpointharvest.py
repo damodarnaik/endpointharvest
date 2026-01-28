@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-EndpointHarvester
-A safe, regex-based endpoint and URL extraction tool
+EndpointHarvest
+Extract endpoints and URLs (including commented and parameterized ones)
 for offensive security and reconnaissance.
 """
 
@@ -9,115 +9,129 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Set
 
+# =========================
+# Regex Patterns
+# =========================
 
-# -----------------------------
-# REGEX DEFINITIONS (VERBOSE-SAFE)
-# -----------------------------
-
-# Full URLs: https://example.com/path
 FULL_URL_REGEX = re.compile(
     r"""
-    \b
     (?:https?|ftp)://
-    (?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}
+    [a-zA-Z0-9.-]+
     (?::\d{1,5})?
-    (?:/[^\s"'<>]*)?
+    (?:/[a-zA-Z0-9\-._~%!$&'()*+,;=:@/]*)?
+    (?:\?[a-zA-Z0-9\-._~%!$&'()*+,;=:@/?]*)?
     """,
     re.VERBOSE | re.IGNORECASE
 )
 
-# Protocol-relative URLs: //example.com/path
-PROTO_RELATIVE_REGEX = re.compile(
+RELATIVE_ENDPOINT_REGEX = re.compile(
     r"""
-    (?<!:)
-    //
-    (?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}
-    (?::\d{1,5})?
-    (?:/[^\s"'<>]*)?
-    """,
-    re.VERBOSE | re.IGNORECASE
-)
-
-# Absolute paths: /path, /path?x=1, /path#frag
-ABSOLUTE_PATH_REGEX = re.compile(
-    r"""
-    (?<!\w)
+    (?<![a-zA-Z0-9])
     /
-    [A-Za-z0-9._~!$&'()+,;=:@/%\-]*
-    (?:\?[A-Za-z0-9._~!$&'()+,;=:@/%\-]*)?
-    (?:\#[A-Za-z0-9._~!$&'()+,;=:@/%\-]*)?
+    (?:[a-zA-Z0-9_\-]+/)*        # folders
+    [a-zA-Z0-9_\-\.]+            # endpoint or file
+    (?:\?[a-zA-Z0-9_\-&=%+']*)?  # query (allow partial / concat)
     """,
     re.VERBOSE
 )
 
+# =========================
+# Noise Filters
+# =========================
 
-# -----------------------------
-# CORE LOGIC
-# -----------------------------
+BLACKLIST_EXACT = {
+    "/", "/g", "/gi", "/i", "/div", "/span", "/h3", "/iframe",
+    "/alert", "/debugger"
+}
 
-def extract_endpoints(file_path: Path) -> Set[str]:
-    results: Set[str] = set()
+JS_KEYWORDS = {
+    "var", "let", "const", "function", "return",
+    "else", "if", "for", "while", "switch", "new"
+}
 
-    try:
-        with file_path.open("r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                results.update(FULL_URL_REGEX.findall(line))
-                results.update(PROTO_RELATIVE_REGEX.findall(line))
-                results.update(ABSOLUTE_PATH_REGEX.findall(line))
-    except OSError as e:
-        print(f"[!] File error: {e}", file=sys.stderr)
-        sys.exit(1)
+STATIC_EXTENSIONS = (
+    ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+    ".woff", ".woff2", ".ttf", ".eot"
+)
+
+# =========================
+# Validation
+# =========================
+
+def is_valid_endpoint(value: str) -> bool:
+    value = value.strip()
+
+    if len(value) < 3:
+        return False
+
+    if value in BLACKLIST_EXACT:
+        return False
+
+    # Remove JS keywords used as paths
+    if value.strip("/").lower() in JS_KEYWORDS:
+        return False
+
+    # Ignore pure static assets (keep HTML/HTM)
+    for ext in STATIC_EXTENSIONS:
+        if value.lower().endswith(ext):
+            return False
+
+    return True
+
+
+def normalize(endpoint: str) -> str:
+    # Remove only hard syntax noise
+    return endpoint.rstrip(");,")
+
+
+# =========================
+# Extraction Logic
+# =========================
+
+def extract_endpoints(content: str) -> set[str]:
+    results = set()
+
+    # Full URLs (even inside comments)
+    for match in FULL_URL_REGEX.findall(content):
+        results.add(match)
+
+    # Relative endpoints
+    for match in RELATIVE_ENDPOINT_REGEX.findall(content):
+        cleaned = normalize(match)
+        if is_valid_endpoint(cleaned):
+            results.add(cleaned)
 
     return results
 
 
-# -----------------------------
+# =========================
 # CLI
-# -----------------------------
+# =========================
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(
-        description="EndpointHarvester - Extract URLs and endpoints from files",
-        formatter_class=argparse.RawTextHelpFormatter,
-        epilog="""
-Examples:
-  python endpointharvest.py app.js
-  python endpointharvest.py app.js -o endpoints.txt
-"""
+        description="EndpointHarvest - Extract endpoints and URLs from files"
     )
-
-    parser.add_argument(
-        "file",
-        type=Path,
-        help="Input file to analyze"
-    )
-
-    parser.add_argument(
-        "-o", "--output",
-        type=Path,
-        help="Save output to a file instead of stdout"
-    )
+    parser.add_argument("-i", "--input", required=True, help="Input file")
+    parser.add_argument("-o", "--output", help="Save output to file")
 
     args = parser.parse_args()
+    path = Path(args.input)
 
-    if not args.file.is_file():
-        print("[!] Input file does not exist or is not a file", file=sys.stderr)
+    if not path.exists():
+        print("[-] Input file not found")
         sys.exit(1)
 
-    endpoints = sorted(extract_endpoints(args.file))
+    content = path.read_text(errors="ignore")
+    endpoints = sorted(extract_endpoints(content))
 
     if args.output:
-        try:
-            args.output.write_text("\n".join(endpoints) + "\n", encoding="utf-8")
-            print(f"[+] Extracted {len(endpoints)} endpoints → {args.output}")
-        except OSError as e:
-            print(f"[!] Output error: {e}", file=sys.stderr)
-            sys.exit(1)
+        Path(args.output).write_text("\n".join(endpoints))
+        print(f"[+] Saved {len(endpoints)} endpoints → {args.output}")
     else:
-        for endpoint in endpoints:
-            print(endpoint)
+        for ep in endpoints:
+            print(ep)
 
 
 if __name__ == "__main__":
